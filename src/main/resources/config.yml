@@ -1,0 +1,27 @@
+# FirstJoinReward configuration
+
+# The item given to the first player who joins when the server was empty
+reward:
+  material: PETRIFIED_OAK_SLAB
+  amount: 10
+  # Optional lore lines (leave empty list for no lore)
+  lore:
+    - "&7You were the first to join an empty server!"
+    - "&8Thanks for keeping the server alive."
+
+# Minimum seconds that must pass between rewards (0 = no cooldown)
+cooldown-seconds: 0
+
+# Discord webhook notification (sent when a reward is given)
+discord:
+  enabled: true
+  # Paste your Discord webhook URL here
+  webhook-url: "https://discord.com/api/webhooks/YOUR_WEBHOOK_ID/YOUR_WEBHOOK_TOKEN"
+  # Message content. Placeholders: {player} = player name
+  message: "**{player}** just claimed the empty-server reward!"
+  # Optional: use a rich embed instead of plain message (recommended)
+  use-embed: true
+  embed:
+    title: "Empty Server Reward"
+    description: "**{player}** was the first to join and received the reward!"
+    color: 5763719   # decimal color (green-ish). Use a hex-to-decimal converter if needed.

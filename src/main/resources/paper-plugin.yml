@@ -1,0 +1,20 @@
+name: FirstJoinReward
+version: '${project.version}'
+main: com.wilder0p.firstjoinreward.FirstJoinReward
+api-version: '26.1'
+authors:
+  - wilder0p
+description: Gives a configurable reward to the first player who joins an empty server. Optional Discord webhook notification.
+website: https://github.com/wilder0p
+
+commands:
+  firstjoinreward:
+    description: Reload the FirstJoinReward configuration
+    usage: /firstjoinreward reload
+    permission: firstjoinreward.reload
+    aliases: [fjr]
+
+permissions:
+  firstjoinreward.reload:
+    description: Allows reloading the FirstJoinReward config
+    default: op
