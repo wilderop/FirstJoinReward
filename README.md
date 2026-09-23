@@ -1,3 +1,6 @@
+<!-- azpbmd-live -->
+**Live:** survival
+<!-- /azpbmd-live -->
 # FirstJoinReward
 
 Paper 26.1.2 plugin that gives a configurable item to the **first player** who joins when the server is empty.
