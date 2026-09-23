@@ -13,6 +13,7 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerJoinEvent;
+import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -24,9 +25,13 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Level;
 
 public final class FirstJoinReward extends JavaPlugin implements Listener {
@@ -34,6 +39,7 @@ public final class FirstJoinReward extends JavaPlugin implements Listener {
     private long lastRewardTime = 0L;
     private File dataFile;
     private FileConfiguration dataConfig;
+    private final Map<UUID, Long> skipUntil = new ConcurrentHashMap<>();
 
     private final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10))
@@ -45,6 +51,21 @@ public final class FirstJoinReward extends JavaPlugin implements Listener {
         loadData();
 
         getServer().getPluginManager().registerEvents(this, this);
+        getServer().getMessenger().registerIncomingPluginChannel(this, "firstjoinreward:skip",
+                (channel, player, message) -> {
+                    try {
+                        UUID uuid = UUID.fromString(new String(message, StandardCharsets.UTF_8).trim());
+                        skipUntil.put(uuid, System.currentTimeMillis() + graceMs());
+                    } catch (Exception ignored) {
+                    }
+                });
+
+        Bukkit.getScheduler().runTaskTimer(this, () -> {
+            int n = Bukkit.getOnlinePlayers().size();
+            EmptyRewardNet.writeOnline("survival", n);
+            long now = System.currentTimeMillis();
+            skipUntil.entrySet().removeIf(e -> e.getValue() < now);
+        }, 20L, 100L);
 
         getLogger().info("FirstJoinReward enabled. Default reward: "
                 + getConfig().getString("reward.material", "PETRIFIED_OAK_SLAB")
@@ -58,20 +79,52 @@ public final class FirstJoinReward extends JavaPlugin implements Listener {
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onPlayerJoin(PlayerJoinEvent event) {
-        // Only the first player online (server was empty)
+        EmptyRewardNet.writeOnline("survival", Bukkit.getOnlinePlayers().size());
+        Player player = event.getPlayer();
+        UUID uuid = player.getUniqueId();
+        Bukkit.getScheduler().runTaskLater(this, () -> tryGrant(uuid), 5L);
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onPlayerQuit(PlayerQuitEvent event) {
+        EmptyRewardNet.touchLastSeen(event.getPlayer().getUniqueId());
+        int remaining = Math.max(0, Bukkit.getOnlinePlayers().size() - 1);
+        EmptyRewardNet.writeOnline("survival", remaining);
+    }
+
+    private long graceMs() {
+        return Math.max(0L, getConfig().getLong("network-grace-seconds", 10L)) * 1000L;
+    }
+
+    private void tryGrant(UUID uuid) {
+        Player player = Bukkit.getPlayer(uuid);
+        if (player == null || !player.isOnline()) {
+            return;
+        }
         if (Bukkit.getOnlinePlayers().size() != 1) {
             return;
         }
-
-        Player player = event.getPlayer();
-        long cooldownSeconds = getConfig().getLong("cooldown-seconds", 0L);
         long now = System.currentTimeMillis();
-
-        if (cooldownSeconds > 0 && (now - lastRewardTime) < (cooldownSeconds * 1000L)) {
-            return; // still on cooldown
+        Long skip = skipUntil.get(uuid);
+        if (skip != null && now < skip) {
+            getLogger().info("Skipped empty-server reward for " + player.getName() + " (recent survival-side switch).");
+            return;
+        }
+        if (EmptyRewardNet.seenRecently(uuid, graceMs())) {
+            getLogger().info("Skipped empty-server reward for " + player.getName() + " (on survival/fabric in the last "
+                    + (graceMs() / 1000L) + "s).");
+            return;
+        }
+        if (EmptyRewardNet.freshOnline("fabric", 20_000L) > 0) {
+            getLogger().info("Skipped empty-server reward for " + player.getName() + " (fabric is not empty).");
+            return;
         }
 
-        // Give the reward
+        long cooldownSeconds = getConfig().getLong("cooldown-seconds", 0L);
+        if (cooldownSeconds > 0 && (now - lastRewardTime) < (cooldownSeconds * 1000L)) {
+            return;
+        }
+
         ItemStack reward = createRewardItem();
         if (reward == null) {
             getLogger().warning("Could not create reward item – check material name in config.yml");
@@ -80,16 +133,13 @@ public final class FirstJoinReward extends JavaPlugin implements Listener {
 
         var leftovers = player.getInventory().addItem(reward);
         if (!leftovers.isEmpty()) {
-            // Inventory full – drop remaining items at the player's feet
             leftovers.values().forEach(item -> player.getWorld().dropItemNaturally(player.getLocation(), item));
         }
 
         lastRewardTime = now;
         saveData();
-
         getLogger().info(player.getName() + " received the empty-server reward.");
 
-        // Discord webhook (async)
         if (getConfig().getBoolean("discord.enabled", false)) {
             String webhookUrl = getConfig().getString("discord.webhook-url", "");
             if (webhookUrl != null && !webhookUrl.isBlank() && !webhookUrl.contains("YOUR_WEBHOOK")) {

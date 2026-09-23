@@ -12,11 +12,15 @@ reward:
 # Minimum seconds that must pass between rewards (0 = no cooldown)
 cooldown-seconds: 0
 
+# Ignore a join if this player was on paper survival or fabric in this window.
+# Stops fabric↔paper switches from looking like a fresh empty-server join.
+network-grace-seconds: 10
+
 # Discord webhook notification (sent when a reward is given)
 discord:
   enabled: true
   # Paste your Discord webhook URL here
-  webhook-url: "https://discord.com/api/webhooks/YOUR_WEBHOOK_ID/YOUR_WEBHOOK_TOKEN"
+  webhook-url: ""
   # Message content. Placeholders: {player} = player name
   message: "**{player}** just claimed the empty-server reward!"
   # Optional: use a rich embed instead of plain message (recommended)
